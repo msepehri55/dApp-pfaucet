@@ -87,9 +87,9 @@ export default function Home() {
         </div>
 
         <div className="glass p-5">
-          <h2 className="text-xl font-semibold mb-2 gradient-text">Request 20 ZTC</h2>
+          <h2 className="text-xl font-semibold mb-2 gradient-text">Request 100 ZTC</h2>
           <p className="text-sm opacity-80 mb-3">
-            Only allowlisted wallets (matching Discord username) can claim once per 24h and only if wallet has &lt; 20 ZTC.
+            Only allowlisted wallets (matching Discord username) can claim once per 24h and only if wallet has &lt; 100 ZTC.
           </p>
 
           <label className="block text-sm mb-1">Wallet address</label>
@@ -99,7 +99,7 @@ export default function Home() {
           <input value={discordUsername} onChange={e => setDiscordUsername(e.target.value)} placeholder="e.g. m.sepehri" className="input" />
 
           <button disabled={claiming} onClick={claim} className="btn mt-4">
-            {claiming ? "Sending..." : "Claim 20 ZTC"}
+            {claiming ? "Sending..." : "Claim 100 ZTC"}
           </button>
           {message && <div className="mt-3 text-sm">{message}</div>}
         </div>
