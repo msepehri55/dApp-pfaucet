@@ -2,7 +2,6 @@ import { parse } from "csv-parse/sync";
 
 type Entry = { wallet_address: string; discord_id: string };
 
-// simple in-memory cache for ~5 minutes between invocations
 let cache: { at: number; map: Map<string, string> } | null = null;
 
 function normalize(a: string) {

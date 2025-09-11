@@ -23,7 +23,7 @@ export async function GET() {
     const totals = new Map<string, bigint>();
     for (const log of logs) {
       const args: any = log.args;
-      const from = (args.from as string);
+      const from = args.from as string;
       const amt = args.amount as bigint;
       totals.set(from, (totals.get(from) || 0n) + amt);
     }

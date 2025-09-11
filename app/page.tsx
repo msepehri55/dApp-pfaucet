@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import QRCode from "react-qr-code";
 
 const CONTRACT = process.env.NEXT_PUBLIC_FAUCET_CONTRACT_ADDRESS || "";
 
@@ -28,7 +27,7 @@ export default function Home() {
     setBalance(json.balance);
   }
   async function loadDonors() {
-    const res = await fetch("/api/donors", { next: { revalidate: 60 } });
+    const res = await fetch("/api/donors", { cache: "no-store" });
     if (res.ok) setDonors(await res.json());
   }
   useEffect(() => {
@@ -68,9 +67,6 @@ export default function Home() {
           <h2 className="text-xl font-semibold mb-2">Donate ZTC</h2>
           <p className="text-sm opacity-80 mb-2">Send ZTC directly to the faucet contract (no wallet connect).</p>
           <div className="font-mono text-lg break-all">{CONTRACT}</div>
-          <div className="mt-3 bg-white p-2 inline-block">
-            <QRCode value={CONTRACT} size={140} />
-          </div>
           <div className="mt-3 text-sm opacity-80">
             Faucet balance: <span className="font-semibold">{formatZtc(balance)} ZTC</span>
           </div>
