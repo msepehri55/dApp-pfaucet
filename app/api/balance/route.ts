@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { publicClient } from "@/lib/clients";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET() {
   const contract =
@@ -14,9 +17,8 @@ export async function GET() {
 
   const balance = await publicClient.getBalance({ address: contract });
 
-  // Force no caching to avoid stale balance
   return NextResponse.json(
     { balance: balance.toString() },
-    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, private" } }
   );
 }

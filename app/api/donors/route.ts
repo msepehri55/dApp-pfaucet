@@ -4,6 +4,9 @@ import { parseAbiItem } from "viem";
 import { discordFor } from "@/lib/allowlist";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const donatedEvent = parseAbiItem("event Donated(address indexed from, uint256 amount)");
 
@@ -42,7 +45,7 @@ export async function GET() {
     );
 
     return NextResponse.json(enriched, {
-      headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" }
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, private" }
     });
   } catch (e: any) {
     console.error(e);

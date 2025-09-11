@@ -24,12 +24,14 @@ export default function Home() {
   const pageSize = 5;
 
   async function loadBalance() {
-    const res = await fetch("/api/balance", { cache: "no-store" });
+    // Add cache-busting query param to bypass any CDN cache
+    const res = await fetch(`/api/balance?t=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
     if (json?.balance) setBalance(json.balance);
   }
   async function loadDonors() {
-    const res = await fetch("/api/donors", { cache: "no-store" });
+    // Add cache-busting query param to bypass any CDN cache
+    const res = await fetch(`/api/donors?t=${Date.now()}`, { cache: "no-store" });
     if (res.ok) setDonors(await res.json());
   }
   useEffect(() => {
@@ -50,6 +52,7 @@ export default function Home() {
       if (!res.ok) throw new Error(json.error || "failed");
       setMessage(`Sent! Tx: ${json.txHash}`);
       await loadBalance();
+      await loadDonors();
     } catch (e: any) {
       setMessage(e.message);
     } finally {
