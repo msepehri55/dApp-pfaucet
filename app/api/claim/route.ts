@@ -8,21 +8,23 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { address, discordId } = await req.json();
+    const { address, discordUsername } = await req.json();
 
-    if (!address || !discordId) {
-      return NextResponse.json({ error: "address and discordId required" }, { status: 400 });
+    if (!address || !discordUsername) {
+      return NextResponse.json({ error: "address and discordUsername required" }, { status: 400 });
     }
     if (!isAddress(address)) {
       return NextResponse.json({ error: "invalid address" }, { status: 400 });
     }
 
-    const allowed = await isAllowedPair(address, discordId);
+    const allowed = await isAllowedPair(address, discordUsername);
     if (!allowed) {
       return NextResponse.json({ error: "not in allowlist" }, { status: 403 });
     }
 
-    const contract = process.env.FAUCET_CONTRACT_ADDRESS as `0x${string}`;
+    const contract =
+      (process.env.FAUCET_CONTRACT_ADDRESS as `0x${string}`) ||
+      (process.env.NEXT_PUBLIC_FAUCET_CONTRACT_ADDRESS as `0x${string}`);
 
     const [payout, threshold, lastClaimTs, recipientBal, faucetBal, cooldown] = await Promise.all([
       publicClient.readContract({ address: contract, abi: faucetAbi, functionName: "payoutAmount" }) as Promise<bigint>,

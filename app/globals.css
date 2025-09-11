@@ -2,24 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-.glass {
-  background: rgba(234, 255, 116, 0.08);
-  border: 1px solid rgba(234, 255, 116, 0.24);
-  border-radius: 12px;
+/* Dark base */
+:root {
+  --bg: #0b0b0f;            /* near-black */
+  --fg: #e8f5e9;            /* soft light */
+  --brand-a: #FCEE09;       /* yellow */
+  --brand-b: #00E676;       /* green */
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(0, 230, 118, 0.35);
+  --glow: rgba(0, 230, 118, 0.18);
 }
+
+html, body { background: var(--bg); color: var(--fg); }
+
+/* Card glass with subtle neon glow */
+.glass {
+  background: linear-gradient(180deg, rgba(252, 238, 9, 0.04), rgba(0, 230, 118, 0.04));
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: 0 0 24px 0 var(--glow), inset 0 0 24px 0 rgba(252, 238, 9, 0.06);
+}
+
+/* Inputs */
 .input {
   width: 100%;
   background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(234,255,116,0.3);
-  border-radius: 8px;
-  padding: 10px;
-  color: #eaff74;
-}
-.input::placeholder { color: rgba(234,255,116,0.5); }
-.btn {
-  background: linear-gradient(90deg,#eaff74,#a3ff40);
-  color: #0a0a0a;
-  padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
-  font-weight: 700;
+  padding: 12px;
+  color: var(--fg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder { color: rgba(255,255,255,0.45); }
+.input:focus {
+  outline: none;
+  border-color: var(--brand-b);
+  box-shadow: 0 0 0 3px rgba(0, 230, 118, 0.2);
+}
+
+/* Buttons with brand gradient */
+.btn {
+  background: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+  color: #0a0a0a;
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  transition: transform 0.08s ease, box-shadow 0.2s ease;
+  box-shadow: 0 6px 18px rgba(0, 230, 118, 0.25);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0, 230, 118, 0.35); }
+.btn:active { transform: translateY(0); }
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

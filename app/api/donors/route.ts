@@ -9,7 +9,9 @@ const donatedEvent = parseAbiItem("event Donated(address indexed from, uint256 a
 
 export async function GET() {
   try {
-    const address = process.env.FAUCET_CONTRACT_ADDRESS as `0x${string}`;
+    const address =
+      (process.env.FAUCET_CONTRACT_ADDRESS as `0x${string}`) ||
+      (process.env.NEXT_PUBLIC_FAUCET_CONTRACT_ADDRESS as `0x${string}`);
     const fromBlock = BigInt(process.env.DEPLOY_BLOCK_NUMBER || "0");
     const toBlock = await publicClient.getBlockNumber();
 
@@ -30,12 +32,14 @@ export async function GET() {
 
     const entries = Array.from(totals.entries());
     entries.sort((a, b) => (b[1] > a[1] ? 1 : -1));
-    const top = entries.slice(0, 20);
+    const top = entries.slice(0, 50); // return up to top 50; UI paginates
 
-    const enriched = await Promise.all(top.map(async ([addr, amount]) => {
-      const di = await discordFor(addr).catch(() => null);
-      return { address: addr, discordId: di, amount: amount.toString() };
-    }));
+    const enriched = await Promise.all(
+      top.map(async ([addr, amount]) => {
+        const username = await discordFor(addr).catch(() => null);
+        return { address: addr, username, amount: amount.toString() };
+      })
+    );
 
     return NextResponse.json(enriched, {
       headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" }
