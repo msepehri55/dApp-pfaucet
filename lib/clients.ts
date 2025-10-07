@@ -6,7 +6,7 @@ const rpcUrl = process.env.RPC_URL || "https://zenchain-testnet.api.onfinality.i
 
 export const publicClient = createPublicClient({
   chain: zenchainTestnet,
-  transport: http(rpcUrl),
+  transport: http(rpcUrl, { batch: false }), // disable batching for reliability with getLogs
 });
 
 const pkRaw = process.env.OPERATOR_PRIVATE_KEY || "";
@@ -17,6 +17,6 @@ const pk = pkRaw ? (pkRaw.startsWith("0x") ? pkRaw : `0x${pkRaw}`) : ("0x" + "0"
 
 export const walletClient = createWalletClient({
   chain: zenchainTestnet,
-  transport: http(rpcUrl),
+  transport: http(rpcUrl, { batch: false }), // keep consistent
   account: privateKeyToAccount(pk as `0x${string}`),
 });
