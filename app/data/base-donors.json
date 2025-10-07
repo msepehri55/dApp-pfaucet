@@ -1,0 +1,7 @@
+{
+  "lastBlock": 0,
+  "donors": [
+    // Example format (replace after bootstrapping):
+    // { "address": "0x58E53eaDBed51C4AffDc06E7CCeD4bE1265d928F", "username": "m.sepehri", "amountWei": "40000000000000000000" }
+  ]
+}

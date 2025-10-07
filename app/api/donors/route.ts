@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicClient } from "@/lib/clients";
-import { keccak256, toBytes, toHex, getAddress } from "viem";
+import baseData from "@/data/base-donors.json";
 import { discordFor } from "@/lib/allowlist";
 
 export const runtime = "nodejs";
@@ -8,90 +8,19 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-// Donated(address,uint256)
-const donatedTopic = keccak256(toBytes("Donated(address,uint256)"));
+type BaseDonor = { address: string; username?: string; amountWei: string };
+type BaseData = { lastBlock: number; donors: BaseDonor[] };
 
-// Raw eth_getLogs to filter by topics
-async function rpcGetLogs(
-  address: `0x${string}`,
-  fromBlock: bigint,
-  toBlock: bigint
-): Promise<any[]> {
-  return publicClient.transport.request({
-    method: "eth_getLogs",
-    params: [
-      {
-        address,
-        fromBlock: toHex(fromBlock),
-        toBlock: toHex(toBlock),
-        topics: [donatedTopic],
-      },
-    ],
-  });
-}
-
-function decodeDonated(log: any) {
-  try {
-    const t1 = log.topics?.[1] as string | undefined;
-    if (!t1) return null;
-    const from = getAddress(("0x" + t1.slice(-40)) as `0x${string}`);
-    const amount = BigInt(log.data as string);
-    return { from, amount };
-  } catch {
-    return null;
-  }
-}
-
-// Scan logs in chunks for historical window
-async function scanLogsChunked(
-  address: `0x${string}`,
+// Scan recent blocks for native-value transfers to the faucet (fast, “instant” updates)
+async function scanRecentTransfers(
+  faucet: `0x${string}`,
   fromBlock: bigint,
   toBlock: bigint
 ) {
   const totals = new Map<string, bigint>();
   if (toBlock < fromBlock) return totals;
 
-  let current = fromBlock;
-  let step = 20000n;
-  const minStep = 1000n;
-
-  while (current <= toBlock) {
-    let end = current + step - 1n;
-    if (end > toBlock) end = toBlock;
-    try {
-      const logs = await rpcGetLogs(address, current, end);
-      for (const log of logs) {
-        const parsed = decodeDonated(log);
-        if (!parsed) continue;
-        totals.set(parsed.from, (totals.get(parsed.from) || 0n) + parsed.amount);
-      }
-      current = end + 1n;
-      if (step < 20000n) {
-        const next = step * 2n;
-        step = next > 20000n ? 20000n : next;
-      }
-    } catch {
-      if (step > minStep) {
-        step = step / 2n;
-        continue;
-      } else {
-        current = end + 1n;
-      }
-    }
-  }
-  return totals;
-}
-
-// Scan recent blocks directly for native-value transfers to the faucet (instant, no log indexing)
-async function scanRecentBlocksForTransfers(
-  address: `0x${string}`,
-  fromBlock: bigint,
-  toBlock: bigint
-) {
-  const totals = new Map<string, bigint>();
-  if (toBlock < fromBlock) return totals;
-
-  const addrLower = address.toLowerCase();
+  const faucetLower = faucet.toLowerCase();
   const start = Number(fromBlock);
   const end = Number(toBlock);
 
@@ -112,8 +41,9 @@ async function scanRecentBlocksForTransfers(
       const txs = (block as any).transactions as any[];
       for (const tx of txs) {
         const to: string | undefined = tx.to ? String(tx.to).toLowerCase() : undefined;
-        if (!to || to !== addrLower) continue;
-        const value: bigint = typeof tx.value === "bigint" ? tx.value : BigInt(tx.value || 0);
+        if (!to || to !== faucetLower) continue;
+        const value: bigint =
+          typeof tx.value === "bigint" ? tx.value : BigInt(tx.value || 0);
         if (value <= 0n) continue;
         const from = String(tx.from);
         totals.set(from, (totals.get(from) || 0n) + value);
@@ -125,55 +55,61 @@ async function scanRecentBlocksForTransfers(
 
 export async function GET() {
   try {
-    const address =
+    const faucet =
       (process.env.FAUCET_CONTRACT_ADDRESS as `0x${string}`) ||
       (process.env.NEXT_PUBLIC_FAUCET_CONTRACT_ADDRESS as `0x${string}`);
-
-    if (!address) {
+    if (!faucet) {
       return NextResponse.json({ error: "Contract address missing" }, { status: 500 });
     }
 
-    // Deploy block from env (decimal or hex). If missing, start at 0.
-    const rawEnv = (process.env.DEPLOY_BLOCK_NUMBER || "0").trim();
-    let deployBlock: bigint;
-    try {
-      deployBlock = rawEnv.startsWith("0x") ? BigInt(rawEnv) : BigInt(parseInt(rawEnv, 10));
-    } catch {
-      deployBlock = 0n;
+    const base = (baseData as BaseData) || { lastBlock: 0, donors: [] };
+
+    // Seed totals from the base JSON (donors baked into the UI)
+    const baseTotals = new Map<string, bigint>();
+    const baseUsername = new Map<string, string>();
+    for (const d of base.donors || []) {
+      const addr = d.address.toLowerCase();
+      baseTotals.set(addr, (baseTotals.get(addr) || 0n) + BigInt(d.amountWei));
+      if (d.username) baseUsername.set(addr, d.username);
     }
 
     const head = await publicClient.getBlockNumber();
 
-    // Define a "tail window" of recent blocks to scan by transactions (instant updates)
-    const tailWindow = 300n; // tune as desired; 300 blocks is usually a few minutes
-    const tailStart = head > tailWindow ? head - tailWindow + 1n : 0n;
+    // Tail window: only scan the recent N blocks for instant new donors
+    const tailWindow = BigInt(process.env.DONOR_TAIL_WINDOW || "600"); // default ~600 blocks
+    const baseLast = BigInt(base.lastBlock || 0);
+    let from = baseLast + 1n;
+    const minFrom = head > tailWindow ? head - tailWindow + 1n : 0n;
+    if (from < minFrom) from = minFrom;
+    if (from > head) from = head;
 
-    // Historical window: from deployBlock up to just before tailStart
-    const histFrom = deployBlock;
-    const histTo = tailStart > 0n ? tailStart - 1n : 0n;
+    // Scan recent transfers
+    const recent = await scanRecentTransfers(faucet, from, head);
 
-    // 1) Historical totals via logs (reliable, but can be delayed for most recent blocks)
-    const histTotals = await scanLogsChunked(address, histFrom, histTo);
-
-    // 2) Real-time totals from recent blocks via direct tx scanning (no log delay)
-    const recentTotals = await scanRecentBlocksForTransfers(address, tailStart, head);
-
-    // Merge totals: histTotals + recentTotals
-    const totals = new Map<string, bigint>(histTotals);
-    for (const [from, amt] of recentTotals.entries()) {
-      totals.set(from, (totals.get(from) || 0n) + amt);
+    // Merge totals: base + recent
+    const totals = new Map<string, bigint>(baseTotals);
+    for (const [addr, amt] of recent.entries()) {
+      const key = addr.toLowerCase();
+      totals.set(key, (totals.get(key) || 0n) + amt);
     }
 
-    // Sort and take top 50 (UI paginates 5/page)
+    // Sort and limit
     const entries = Array.from(totals.entries());
     entries.sort((a, b) => (b[1] > a[1] ? 1 : -1));
     const top = entries.slice(0, 50);
 
-    // Enrich with Discord username from your sheet (if available)
+    // Prepare response with usernames:
+    // - use baked username if present
+    // - else try to resolve via allowlist CSV
     const enriched = await Promise.all(
-      top.map(async ([addr, amount]) => {
-        const username = await discordFor(addr).catch(() => null);
-        return { address: addr, username, amount: amount.toString() };
+      top.map(async ([addrLower, amount]) => {
+        const baked = baseUsername.get(addrLower) || null;
+        const resolved = baked || (await discordFor(addrLower).catch(() => null));
+        return {
+          address: addrLower,
+          username: resolved,
+          amount: amount.toString(), // wei
+        };
       })
     );
 
