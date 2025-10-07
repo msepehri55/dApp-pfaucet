@@ -1,7 +1,10 @@
 {
   "lastBlock": 0,
   "donors": [
-    // Example format (replace after bootstrapping):
-    // { "address": "0x58E53eaDBed51C4AffDc06E7CCeD4bE1265d928F", "username": "m.sepehri", "amountWei": "40000000000000000000" }
+    { "username": "drsadraaa", "amountWei": "10001000000000000000000" },
+    { "username": "Unknown",   "amountWei": "10000000000000000000000" },
+    { "username": "mohis_95",  "amountWei": "10000000000000000000000" },
+    { "username": "Unknown",   "amountWei": "9999000000000000000000" },
+    { "username": "m.sepehri", "amountWei": "1001000000000000000000" }
   ]
 }

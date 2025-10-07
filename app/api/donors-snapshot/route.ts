@@ -12,7 +12,7 @@ export const fetchCache = "force-no-store";
 const donatedTopic = keccak256(toBytes("Donated(address,uint256)"));
 
 async function rpcGetLogs(address: `0x${string}`, fromBlock: bigint, toBlock: bigint) {
-  return publicClient.transport.request({
+  const res = await publicClient.transport.request({
     method: "eth_getLogs",
     params: [
       {
@@ -23,6 +23,7 @@ async function rpcGetLogs(address: `0x${string}`, fromBlock: bigint, toBlock: bi
       },
     ],
   });
+  return res as any[]; // explicit cast to fix TS "unknown" error
 }
 
 export async function GET() {
@@ -47,7 +48,7 @@ export async function GET() {
       let end = current + step - 1n;
       if (end > head) end = head;
       try {
-        const logs: any[] = await rpcGetLogs(faucet, current, end);
+        const logs = (await rpcGetLogs(faucet, current, end)) as any[];
         for (const log of logs) {
           const t1 = log.topics?.[1] as string | undefined;
           if (!t1) continue;

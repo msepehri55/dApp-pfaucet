@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicClient } from "@/lib/clients";
-import baseData from "@/data/base-donors.json";
+import baseJson from "../../data/base-donors.json"; // fixed path
 import { discordFor } from "@/lib/allowlist";
 
 export const runtime = "nodejs";
@@ -8,23 +8,23 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-type BaseDonor = { address: string; username?: string; amountWei: string };
+type BaseDonor = { username: string; amountWei: string };
 type BaseData = { lastBlock: number; donors: BaseDonor[] };
 
-// Scan recent blocks for native-value transfers to the faucet (fast, “instant” updates)
+// Scan recent blocks for native-value transfers to the faucet (instant)
 async function scanRecentTransfers(
   faucet: `0x${string}`,
   fromBlock: bigint,
   toBlock: bigint
 ) {
-  const totals = new Map<string, bigint>();
-  if (toBlock < fromBlock) return totals;
+  const totalsByAddress = new Map<string, bigint>();
+  if (toBlock < fromBlock) return totalsByAddress;
 
   const faucetLower = faucet.toLowerCase();
   const start = Number(fromBlock);
   const end = Number(toBlock);
 
-  const batchSize = 40; // fetch 40 blocks in parallel per batch
+  const batchSize = 40;
   for (let i = start; i <= end; i += batchSize) {
     const batchEnd = Math.min(end, i + batchSize - 1);
     const promises: Promise<any>[] = [];
@@ -45,12 +45,12 @@ async function scanRecentTransfers(
         const value: bigint =
           typeof tx.value === "bigint" ? tx.value : BigInt(tx.value || 0);
         if (value <= 0n) continue;
-        const from = String(tx.from);
-        totals.set(from, (totals.get(from) || 0n) + value);
+        const from = String(tx.from).toLowerCase();
+        totalsByAddress.set(from, (totalsByAddress.get(from) || 0n) + value);
       }
     }
   }
-  return totals;
+  return totalsByAddress;
 }
 
 export async function GET() {
@@ -62,56 +62,45 @@ export async function GET() {
       return NextResponse.json({ error: "Contract address missing" }, { status: 500 });
     }
 
-    const base = (baseData as BaseData) || { lastBlock: 0, donors: [] };
+    const base = (baseJson as unknown as BaseData) || { lastBlock: 0, donors: [] };
 
-    // Seed totals from the base JSON (donors baked into the UI)
-    const baseTotals = new Map<string, bigint>();
-    const baseUsername = new Map<string, string>();
+    // Seed totals from baked donors in UI (by username, in wei)
+    const totalsByUser = new Map<string, bigint>();
     for (const d of base.donors || []) {
-      const addr = d.address.toLowerCase();
-      baseTotals.set(addr, (baseTotals.get(addr) || 0n) + BigInt(d.amountWei));
-      if (d.username) baseUsername.set(addr, d.username);
+      const u = (d.username || "Unknown").trim();
+      totalsByUser.set(u, (totalsByUser.get(u) || 0n) + BigInt(d.amountWei));
     }
 
     const head = await publicClient.getBlockNumber();
 
-    // Tail window: only scan the recent N blocks for instant new donors
-    const tailWindow = BigInt(process.env.DONOR_TAIL_WINDOW || "600"); // default ~600 blocks
+    // Only scan recent tail for “new” donors (fast)
+    const tailWindow = BigInt(process.env.DONOR_TAIL_WINDOW || "600");
     const baseLast = BigInt(base.lastBlock || 0);
     let from = baseLast + 1n;
     const minFrom = head > tailWindow ? head - tailWindow + 1n : 0n;
     if (from < minFrom) from = minFrom;
     if (from > head) from = head;
 
-    // Scan recent transfers
-    const recent = await scanRecentTransfers(faucet, from, head);
+    // Scan recent native transfers
+    const recentByAddr = await scanRecentTransfers(faucet, from, head);
 
-    // Merge totals: base + recent
-    const totals = new Map<string, bigint>(baseTotals);
-    for (const [addr, amt] of recent.entries()) {
-      const key = addr.toLowerCase();
-      totals.set(key, (totals.get(key) || 0n) + amt);
+    // Enrich addresses to usernames (allowlist), and merge into totals by username
+    for (const [addrLower, amt] of recentByAddr.entries()) {
+      const username = (await discordFor(addrLower).catch(() => null)) || "Unknown";
+      const key = username.trim();
+      totalsByUser.set(key, (totalsByUser.get(key) || 0n) + amt);
     }
 
-    // Sort and limit
-    const entries = Array.from(totals.entries());
-    entries.sort((a, b) => (b[1] > a[1] ? 1 : -1));
+    // Sort and cap
+    const entries = Array.from(totalsByUser.entries());
+    entries.sort((a, b) => (a[1] === b[1] ? 0 : b[1] > a[1] ? 1 : -1));
     const top = entries.slice(0, 50);
 
-    // Prepare response with usernames:
-    // - use baked username if present
-    // - else try to resolve via allowlist CSV
-    const enriched = await Promise.all(
-      top.map(async ([addrLower, amount]) => {
-        const baked = baseUsername.get(addrLower) || null;
-        const resolved = baked || (await discordFor(addrLower).catch(() => null));
-        return {
-          address: addrLower,
-          username: resolved,
-          amount: amount.toString(), // wei
-        };
-      })
-    );
+    // Response uses wei string amounts (UI formats)
+    const enriched = top.map(([username, amountWei]) => ({
+      username,
+      amount: amountWei.toString(),
+    }));
 
     return NextResponse.json(enriched, {
       headers: { "Cache-Control": "no-store, no-cache, must-revalidate, private" },
